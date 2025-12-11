@@ -1,0 +1,71 @@
+# -------------------------
+# Python & FastAPI Project
+# -------------------------
+
+# Environment variables
+.env
+*.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Database files (SQLite/Local DB)
+*.db
+*.sqlite3
+*.sqlite
+
+# Redis dump file
+dump.rdb
+
+# Logs
+*.log
+logs/
+
+# Compiled binaries
+*.so
+*.dll
+*.exe
+
+# OS-specific junk
+.DS_Store
+Thumbs.db
+
+# IDE / Editor folders
+.vscode/
+.idea/
+*.swp
+
+# Local scripts or temp files
+tmp/
+temp/
+*.tmp
+
+# CSV or sensitive data
+*.csv
+
+# Migrations (if auto-generated)
+migrations/
+
+# Node (if using frontend inside project)
+node_modules/
+dist/
+build/
+
+# Backup files
+*.bak
+*.old
+
+# pyproject specific
+.poetry/
+
+# FastAPI auto-generated docs
+site/
