@@ -21,6 +21,7 @@ from models import (
      init_db,
      UserCreate,
      UserRead,
+     UserUpdate,
      TaskCreate,
      TaskRead,
  )
@@ -37,6 +38,98 @@ app.add_middleware(
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+
+# Hierarchy Configuration
+HIERARCHY_RANKS = {
+    "SE1": 1, "SE2": 1, "SSE": 1, "TL": 1,
+    "L1": 2,
+    "L2": 3,
+    "EM": 4,
+    "CTO": 5,
+    "ADMIN": 5,       # Treating Admin equivalent to CTO/Top level for task visibility
+    "SUPERADMIN": 6,
+    "OWNER": 7
+}
+
+def get_rank(designation: str) -> int:
+    # Default to 0 if unknown designation
+    if not designation:
+        return 0
+    # Create a normalized lookup (case-insensitive)
+    return HIERARCHY_RANKS.get(designation.upper(), 0)
+
+def validate_manager_hierarchy(db, manager_id: str, employee_designation: str, employee_id: Optional[str] = None):
+    """
+    Validates if the manager exists and has a higher rank than the employee.
+    Allows self-management for Rank >= 5.
+    """
+    manager = db.query(UserModel).filter(UserModel.emp_id == manager_id).first()
+    if not manager:
+        raise HTTPException(status_code=400, detail=f"Manager with ID {manager_id} not found")
+        
+    manager_rank = get_rank(manager.emp_designation)
+    employee_rank = get_rank(employee_designation)
+    
+    # Check for Self-Management first
+    if employee_id and manager_id == employee_id:
+        if employee_rank >= 5:
+            return True
+        else:
+            raise HTTPException(status_code=400, detail="Only hierarchies of Level 5 (CTO/Admin) and above can be their own manager.")
+
+    # Standard Hierarchy Check: Manager must be strictly higher
+    if manager_rank <= employee_rank:
+         raise HTTPException(status_code=400, detail=f"Invalid Hierarchy: Manager ({manager.emp_designation}) must be higher rank than Employee ({employee_designation})")
+    
+    return True
+
+def get_all_subordinates(db, manager_emp_id: str) -> set:
+    """
+    Recursively finds all subordinates (direct and indirect) for a given manager.
+    Returns a set of emp_ids.
+    """
+    subordinates = set()
+    # Find direct reports
+    direct_reports = db.query(UserModel).filter(UserModel.manager_id == manager_emp_id).all()
+    
+    for user in direct_reports:
+        subordinates.add(user.emp_id)
+        # Recursively find their subordinates
+        subordinates.update(get_all_subordinates(db, user.emp_id))
+        
+    return subordinates
+
+    return subordinates
+
+def get_user_view_scope(db, emp_id: str) -> set:
+    """
+    Returns the set of emp_ids that the given emp_id is allowed to see (Self + Subordinates).
+    """
+    user = db.query(UserModel).filter(UserModel.emp_id == emp_id).first()
+    if not user:
+        return set()
+    
+    scope = {emp_id}
+    rank = get_rank(user.emp_designation)
+    
+    # If rank is high enough, include subordinates
+    if rank >= 2:
+        scope.update(get_all_subordinates(db, emp_id))
+        
+    return scope
+
+def validate_assignee_eligibility(user: UserModel):
+    """
+    Validates if a user is eligible to be assigned a task.
+    Rank 4 (EM) and above are NOT allowed to be assigned tasks.
+    """
+    rank = get_rank(user.emp_designation)
+    if rank >= 4:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot assign task to {user.emp_designation} ({user.emp_name}). Only ranks below EM (Rank 4) can be assigned tasks."
+        )
+    return True
 
 def get_db() -> Generator:
      db = SessionLocal()
@@ -143,10 +236,12 @@ def create_user(user: UserCreate, db=Depends(get_db)):
      if existing:
          raise HTTPException(status_code=400, detail="User with emp_id already exists")
 
-     # Check uniqueness by emp_email
      existing = db.query(UserModel).filter(UserModel.emp_email == user.emp_email).first()
      if existing:
          raise HTTPException(status_code=400, detail="User with emp_email already exists")
+
+     if user.manager_id:
+         validate_manager_hierarchy(db, user.manager_id, user.emp_designation, user.emp_id)
 
      db_user = UserModel(
          emp_name=user.emp_name,
@@ -156,6 +251,7 @@ def create_user(user: UserCreate, db=Depends(get_db)):
          emp_designation=user.emp_designation,
          emp_department=user.emp_department,
          emp_hierarchy=user.emp_hierarchy,
+         manager_id=user.manager_id,
      )
      db.add(db_user)
      db.commit()
@@ -171,8 +267,19 @@ def create_user(user: UserCreate, db=Depends(get_db)):
 
 
 @app.get('/user')
-def get_users(db=Depends(get_db)):
-    users = db.query(UserModel).all()
+def get_users(user_id: Optional[str] = None, db=Depends(get_db)):
+    if user_id:
+        # Check if user exists (optional, but good for validation)
+        # root_user = db.query(UserModel).filter(UserModel.emp_id == user_id).first()
+        
+        # Get all subordinates recursively (naturally excludes the user_id itself)
+        subordinate_ids = get_all_subordinates(db, user_id)
+        
+        users = db.query(UserModel).filter(UserModel.emp_id.in_(subordinate_ids)).all()
+    else:
+        # Default behavior: fetch all users (or could be restricted to current_user scope if desired later)
+        users = db.query(UserModel).all()
+
     data = []
     for user in users:
         data.append({
@@ -184,8 +291,66 @@ def get_users(db=Depends(get_db)):
             "emp_designation": user.emp_designation,
             "emp_department": user.emp_department,
             "emp_hierarchy": user.emp_hierarchy,
+            "manager_id": user.manager_id,
         })
     return response(status.HTTP_200_OK, message="Users fetched successfully", data=data)
+
+
+@app.put('/user/{emp_id}', status_code=200)
+def update_user(emp_id: str, user_update: UserUpdate, db=Depends(get_db)):
+    db_user = db.query(UserModel).filter(UserModel.emp_id == emp_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Validate uniqueness if changing emp_id
+    if user_update.emp_id and user_update.emp_id != emp_id:
+        existing_user = db.query(UserModel).filter(UserModel.emp_id == user_update.emp_id).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="New emp_id already exists")
+    
+    # Validate uniqueness if changing emp_email
+    if user_update.emp_email and user_update.emp_email != db_user.emp_email:
+        existing_email = db.query(UserModel).filter(UserModel.emp_email == user_update.emp_email).first()
+        if existing_email:
+            raise HTTPException(status_code=400, detail="New emp_email already exists")
+
+    # Validate manager if changed
+    if user_update.manager_id and user_update.manager_id != db_user.manager_id:
+         # Check hierarchy with Current designation (or new if provided)
+         designation = user_update.emp_designation or db_user.emp_designation
+         validate_manager_hierarchy(db, user_update.manager_id, designation, db_user.emp_id)
+
+    # Update fields if provided
+    if user_update.emp_name is not None:
+        db_user.emp_name = user_update.emp_name
+    if user_update.emp_id is not None:
+        db_user.emp_id = user_update.emp_id
+    if user_update.emp_email is not None:
+        db_user.emp_email = user_update.emp_email
+    if user_update.emp_phone is not None:
+        db_user.emp_phone = user_update.emp_phone
+    if user_update.emp_designation is not None:
+        db_user.emp_designation = user_update.emp_designation
+    if user_update.emp_department is not None:
+        db_user.emp_department = user_update.emp_department
+    if user_update.emp_hierarchy is not None:
+        db_user.emp_hierarchy = user_update.emp_hierarchy
+    if user_update.manager_id is not None:
+        db_user.manager_id = user_update.manager_id
+
+    try:
+        db.commit()
+        db.refresh(db_user)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database update failed: {str(e)}")
+
+    data = UserRead.from_orm(db_user).dict()
+    # Ensure token is not returned or handled appropriately if needed (usually not needed in update profile response unless refreshed)
+    if "token" in data:
+        del data["token"]
+
+    return response(status.HTTP_200_OK, message="User updated successfully", data=data)
 
 
 @app.post('/tasks', status_code=201)
@@ -203,6 +368,9 @@ def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verif
     assigned_user = db.query(UserModel).filter(UserModel.emp_id == task.task_assigned_to).first()
     if not assigned_user:
         raise HTTPException(status_code=400, detail="Assigned user not found")
+    
+    # Validate Rank Logic
+    validate_assignee_eligibility(assigned_user)
 
     db_task = TaskModel(
         id=task.id,
@@ -230,10 +398,32 @@ def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verif
 
 @app.get('/tasks')
 def get_tasks(user_id: Optional[str] = None, db=Depends(get_db), current_user=Depends(verify_token)):
-    query = db.query(TaskModel)
-    if user_id:
-        query = query.filter(TaskModel.task_assigned_to == user_id)
+    """
+    Get tasks.
+    - If user_id is NOT provided: Returns tasks for Current User + Subordinates (if applicable).
+    - If user_id IS provided: Returns tasks for Target User + Target User's Subordinates (if applicable).
+      (Only if Current User has permission to view Target User).
+    """
     
+    # 1. Determine Access Scope of Current User
+    # What is the MAX set of users this person is allowed to see data for?
+    current_user_scope = get_user_view_scope(db, current_user.emp_id)
+    
+    # 2. Determine the Root of the Query
+    target_root_id = user_id if user_id else current_user.emp_id
+    
+    # 3. Security Check
+    # Ensure current user is allowed to view the target root user
+    if target_root_id not in current_user_scope:
+         # If trying to view someone outside their hierarchy, deny access (return empty)
+         return response(status.HTTP_200_OK, message="Tasks fetched successfully", data=[])
+
+    # 4. Calculate the Final Display Scope
+    # We want the tree *rooted* at target_root_id
+    display_scope = get_user_view_scope(db, target_root_id)
+    
+    query = db.query(TaskModel).filter(TaskModel.task_assigned_to.in_(display_scope))
+
     tasks = query.all()
     data = []
     for task in tasks:
@@ -272,6 +462,8 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
     if not assigned_user:
             raise HTTPException(status_code=400, detail="Assigned user not found")
 
+    # Validate Rank Logic
+    validate_assignee_eligibility(assigned_user)
 
     # Check if assignee is the same
     # The user specifically asked to remove from prev developer to new developer logic
@@ -344,7 +536,8 @@ async def upload_users(file: UploadFile = File(...), db=Depends(get_db)):
             emp_phone=row.get("emp_phone"),
             emp_designation=row.get("emp_designation"),
             emp_department=row.get("emp_department"),
-            emp_hierarchy=row.get("emp_hierarchy")
+            emp_hierarchy=row.get("emp_hierarchy"),
+            manager_id=row.get("manager_id") # Add CSV support for manager
         )
         db.add(new_user)
         added_count += 1
@@ -391,6 +584,9 @@ async def upload_tasks(file: UploadFile = File(...), db=Depends(get_db), current
         user = db.query(UserModel).filter(UserModel.emp_id == assigned_id).first()
         if not user:
             raise HTTPException(status_code=400, detail=f"Row {line_num}: Assigned user '{assigned_id}' not found")
+
+        # Validate Rank Logic
+        validate_assignee_eligibility(user)
 
         # ID Handling: If missing, generate.
         task_id = row.get("id")

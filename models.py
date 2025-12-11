@@ -22,6 +22,7 @@ class User(Base):
     emp_designation = Column(String(128), nullable=True)
     emp_department = Column(String(128), nullable=True)
     emp_hierarchy = Column(String(128), nullable=True)
+    manager_id = Column(String(64), nullable=True) # emp_id of the manager
     token = Column(String(255), nullable=True)
 
 class Task(Base):
@@ -66,6 +67,7 @@ class UserCreate(BaseModel):
     emp_designation: Optional[str] = None
     emp_department: Optional[str] = None
     emp_hierarchy: Optional[str] = None
+    manager_id: Optional[str] = None
 
 class UserRead(BaseModel):
     id: int
@@ -76,6 +78,7 @@ class UserRead(BaseModel):
     emp_designation: Optional[str] = None
     emp_department: Optional[str] = None
     emp_hierarchy: Optional[str] = None
+    manager_id: Optional[str] = None
     token: Optional[str] = None
 
     class Config:
@@ -115,6 +118,16 @@ class TaskRead(BaseModel):
 
     class Config:
         from_attributes = True  # Pydantic v2 ORM mode
+
+class UserUpdate(BaseModel):
+    emp_name: Optional[str] = None
+    emp_id: Optional[str] = None
+    emp_email: Optional[str] = None
+    emp_phone: Optional[str] = None
+    emp_designation: Optional[str] = None
+    emp_department: Optional[str] = None
+    emp_hierarchy: Optional[str] = None
+    manager_id: Optional[str] = None
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
