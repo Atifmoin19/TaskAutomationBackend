@@ -355,6 +355,11 @@ def update_user(emp_id: str, user_update: UserUpdate, db=Depends(get_db)):
 
 @app.post('/tasks', status_code=201)
 def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verify_token)):
+    
+    # Generate Task ID if not provided
+    if not task.id:
+        task.id = secrets.token_hex(8)
+
     existing = db.query(TaskModel).filter(TaskModel.id == task.id).first()
     if existing:
         raise HTTPException(status_code=400, detail="Task with this ID already exists")

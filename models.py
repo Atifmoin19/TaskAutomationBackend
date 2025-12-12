@@ -85,7 +85,7 @@ class UserRead(BaseModel):
         from_attributes = True  # Pydantic v2 ORM mode
 
 class TaskCreate(BaseModel):
-    id: str
+    id: Optional[str] = None
     task_name: str
     task_description: Optional[str] = None
     task_status: Optional[str] = None
