@@ -1,7 +1,8 @@
 import logging
 import secrets
 from typing import Generator, Optional
-from fastapi import FastAPI, Depends, HTTPException, Header, Body, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, Header, Body, UploadFile, File, Request
+from fastapi.responses import JSONResponse
 import csv
 import io
 import codecs
@@ -24,6 +25,7 @@ from models import (
      UserUpdate,
      TaskCreate,
      TaskRead,
+     Foundation,
  )
 
 app = FastAPI()
@@ -37,6 +39,15 @@ app.add_middleware(
 )
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+# Global Exception Handler
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    return response(
+        status_code=exc.status_code,
+        message=exc.detail,
+        data={"details": exc.detail}
+    )
 
 
 # Hierarchy Configuration
@@ -141,6 +152,12 @@ def get_db() -> Generator:
 # Auth Models and Dependency
 class LoginRequest(BaseModel):
     emp_id: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    emp_id: str
+    emp_email: str
+    password: str
 
 def verify_token(authorization: Optional[str] = Header(None), db=Depends(get_db)):
     if not authorization:
@@ -152,10 +169,15 @@ def verify_token(authorization: Optional[str] = Header(None), db=Depends(get_db)
         token = authorization.replace("Token ", "")
     else:
         token = authorization
-    user = db.query(UserModel).filter(UserModel.token == token).first()
+        
+    foundation_entry = db.query(Foundation).filter(Foundation.token == token).first()
+    if not foundation_entry:
+         raise HTTPException(status_code=401, detail="Invalid or Expired Token")
+
+    user = db.query(UserModel).filter(UserModel.emp_id == foundation_entry.emp_id).first()
     
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid or Expired Token")
+        raise HTTPException(status_code=401, detail="User associated with token not found")
     
     return user
 
@@ -192,17 +214,26 @@ def welcome():
 
 @app.post('/login', status_code=200)
 def login(login_req: LoginRequest, db=Depends(get_db)):
+    # Check Foundation for password
+    foundation = db.query(Foundation).filter(Foundation.emp_id == login_req.emp_id).first()
+    
+    # If not found or password mismatch (simple string match for now as per implied task simplicity, usually hash)
+    if not foundation or foundation.password != login_req.password:
+         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
     user = db.query(UserModel).filter(UserModel.emp_id == login_req.emp_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User details not found")
     
     token = secrets.token_hex(16)
-    user.token = token
+    foundation.token = token
     db.commit()
-    db.refresh(user)
     
     user_data = UserRead.from_orm(user).dict()
-    # Remove token from user_data to send it separately as requested
+    # Remove token/password if present? UserRead doesn't have password, Foundation has.
+    # UserRead might have 'token' field if not updated properly in models, but we removed it or it is optional traverse.
+    # Note: UserRead no longer has 'token' populated from User model since we removed it from User model.
+    # If UserRead still has the field in Pydantic, it will be None.
     if "token" in user_data:
         del user_data["token"]
 
@@ -213,17 +244,69 @@ def login(login_req: LoginRequest, db=Depends(get_db)):
     return response(status.HTTP_200_OK, message="Login successful", data=data)
 
 
+@app.post('/register', status_code=200)
+def register(reg_req: RegisterRequest, db=Depends(get_db)):
+    # 1. Verify User Exists with matching emp_id and email
+    user = db.query(UserModel).filter(
+        UserModel.emp_id == reg_req.emp_id, 
+        UserModel.emp_email == reg_req.emp_email
+    ).first()
+    
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User validation failed. Invalid ID or Email.")
+
+    # 2. Check/Create Foundation Entry
+    foundation = db.query(Foundation).filter(Foundation.emp_id == reg_req.emp_id).first()
+    
+    token = secrets.token_hex(16)
+    
+    if foundation:
+        # Check if already registered (password changed from default)
+        if foundation.password != "123456":
+            raise HTTPException(status_code=400, detail="User already registered. Kindly login.")
+            
+        # If entry exists (default pwd), update password and token
+        foundation.password = reg_req.password
+        foundation.token = token
+    else:
+        # If for some reason it doesn't exist (legacy?), create it
+        foundation = Foundation(
+            emp_id=reg_req.emp_id,
+            password=reg_req.password,
+            token=token
+        )
+        db.add(foundation)
+    
+    db.commit()
+    
+    # 3. Return Response (Same as Login)
+    user_data = UserRead.from_orm(user).dict()
+    if "token" in user_data:
+        del user_data["token"]
+        
+    data = {
+        "token": token,
+        "userData": user_data
+    }
+    return response(status.HTTP_200_OK, message="Registration successful", data=data)
+
 @app.post('/logout', status_code=200)
 def logout(authorization: Optional[str] = Header(None), db=Depends(get_db)):
     if not authorization:
         # If no token, just say logged out or error? Usually success if already "gone" logic, but checking token is safer.
         return response(status.HTTP_401_UNAUTHORIZED, message="Missing Token")
 
-    token = authorization.replace("Bearer ", "")
-    user = db.query(UserModel).filter(UserModel.token == token).first()
+    if authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "")
+    elif authorization.startswith("Token "):
+        token = authorization.replace("Token ", "")
+    else:
+        token = authorization
+
+    foundation = db.query(Foundation).filter(Foundation.token == token).first()
     
-    if user:
-        user.token = None # Mark as null/expired
+    if foundation:
+        foundation.token = None # Mark as null/expired
         db.commit()
     
     return response(status.HTTP_200_OK, message="Logout successful")
@@ -254,6 +337,17 @@ def create_user(user: UserCreate, db=Depends(get_db)):
          manager_id=user.manager_id,
      )
      db.add(db_user)
+     
+     # Create Foundation Entry
+     # Use provided password or default "123456"
+     pwd = user.password if user.password else "123456"
+     foundation_entry = Foundation(
+         emp_id=user.emp_id,
+         password=pwd,
+         token=None
+     )
+     db.add(foundation_entry)
+     
      db.commit()
      db.refresh(db_user)
      logger.info("User created: %s", {
@@ -545,6 +639,16 @@ async def upload_users(file: UploadFile = File(...), db=Depends(get_db)):
             manager_id=row.get("manager_id") # Add CSV support for manager
         )
         db.add(new_user)
+        
+        # Create Foundation Entry for CSV User
+        # Default password "123456"
+        foundation_entry = Foundation(
+            emp_id=emp_id,
+            password="123456",
+            token=None
+        )
+        db.add(foundation_entry)
+
         added_count += 1
     
     db.commit()

@@ -23,6 +23,13 @@ class User(Base):
     emp_department = Column(String(128), nullable=True)
     emp_hierarchy = Column(String(128), nullable=True)
     manager_id = Column(String(64), nullable=True) # emp_id of the manager
+
+class Foundation(Base):
+    __tablename__ = "foundation"
+
+    id = Column(Integer, primary_key=True, index=True)
+    emp_id = Column(String(64), unique=True, nullable=False, index=True) # One-to-one with User.emp_id
+    password = Column(String(255), nullable=False)
     token = Column(String(255), nullable=True)
 
 class Task(Base):
@@ -68,6 +75,7 @@ class UserCreate(BaseModel):
     emp_department: Optional[str] = None
     emp_hierarchy: Optional[str] = None
     manager_id: Optional[str] = None
+    password: Optional[str] = None # Optional for now, will default in main logic if missing
 
 class UserRead(BaseModel):
     id: int
@@ -79,7 +87,6 @@ class UserRead(BaseModel):
     emp_department: Optional[str] = None
     emp_hierarchy: Optional[str] = None
     manager_id: Optional[str] = None
-    token: Optional[str] = None
 
     class Config:
         from_attributes = True  # Pydantic v2 ORM mode

@@ -12,4 +12,4 @@ def response(status_code: int = status.HTTP_400_BAD_REQUEST, message: Optional[s
         'message': message,
         'data': data
     }
-    return JSONResponse(content=body, status_code=status.HTTP_200_OK, headers={'Cache-Control': 'no-cache'})
+    return JSONResponse(content=body, status_code=status_code, headers={'Cache-Control': 'no-cache'})
