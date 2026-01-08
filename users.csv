@@ -1,5 +1,9 @@
-emp_name,emp_id,emp_email,emp_phone,emp_designation,emp_department,emp_hierarchy
-Atif Moin,S00218,atif.moin@zopper.com,7007136187,SE1,FE,EMPLOYEE
-Rakesh Ranjan,S00070,rakesh.ranjan@zopper.com,9911963904,Tech Lead,QA,EMPLOYEE
-Saurabh Kumar,S00148,saurabh.kumar@zopper.com,9458466102,admin,SSE,L1
-Aashish Kucchal,S00493,aashish.kuchhal@zopper.com,9999999999,ASE,BE,EMPLOYEE
+id,emp_name,emp_id,emp_email,emp_phone,emp_designation,emp_department,emp_hierarchy,token,manager_id
+1,Atif Moin,S00218,atif.moin@zopper.com,7007136187,SE1,FE,EMPLOYEE,NULL,S00148
+2,Rakesh Ranjan,S00070,rakesh.ranjan@zopper.com,9911963904,TL,QA,EMPLOYEE,NULL,S00590
+3,Saurabh Kumar,S00148,saurabh.kumar@zopper.com,9458466102,L1,SSE,L1,NULL,S00040
+4,Aashish Kucchal,S00493,aashish.kuchhal@zopper.com,9999999999,ASE,BE,EMPLOYEE,NULL,S00148
+5,Eftakhar Ahamad,S00021,eftakhar@zopper.com,9654429137,EM,EM,EM,NULL,S00005
+6,Shubham Dixit,S00040,shubham.dixit@zopper.com,8085740588,L2,Tech Lead,L2,NULL,S00021
+7,Nitin Dixit,S00590,nitin.dixit@zopper.com,9999999999,L1,BE,L1,NULL,S00040
+8,Bragadish Sureshkumar,S00005,bragadish@zopper.com,9900608592,CTO,Chief Technology Officer,Admin,NULL,NULL

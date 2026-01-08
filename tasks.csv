@@ -1,0 +1,32 @@
+"id","task_name","task_description","task_status","task_assigned_to","task_assigned_by","task_assigned_date","task_due_date","task_priority","task_tags","task_notes","task_created_at","task_updated_at","task_duration","time_spent","completed_at"
+"0e0hag68z","asdasd","","todo",NULL,NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T14:31:36.718Z",NULL,"1","0",NULL
+"2ffspod62","new test","asdasd","done","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T13:27:02.230Z",NULL,"4","0.1","2025-12-12T13:27:06.771Z"
+"3cu49m78s","new rtas","aadasdsad","done","S00625",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T12:00:22.899Z",NULL,"5","0.1","2025-12-12T12:00:24.977Z"
+"4t3l6b22u","asdasd","asdsad","done","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T11:48:08.218Z",NULL,"0.1","0.1","2025-12-12T11:54:30.269Z"
+"58htmc9cv","New task","asdasdasdasdsa","done","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T11:44:08.348Z",NULL,"0.1","0.1","2025-12-12T11:50:44.268Z"
+"6rfb7hoef","asdasd","adasd","done","S00148",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T14:02:25.821Z",NULL,"3","0",NULL
+"7fn61u02c","task 2","asdasdasd","done","S00625",NULL,"2025-12-12T12:28:38.662Z",NULL,"P0",NULL,NULL,"2025-12-12T12:28:38.662Z",NULL,"1","0.17","2025-12-12T12:38:57.087Z"
+"97jqf20qd","TASK 2","DO TASK 2 AS WELL","done","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T14:00:14.769Z",NULL,"3","0",NULL
+"bb0991c4984a9171","Bug Test","Check bug","done","S00445",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T06:38:27.326Z",NULL,"4.87","0",NULL
+"cuxxam6oi","new test task","sadadasd","done","S00625",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T11:30:41.076Z",NULL,"0.1","0",NULL
+"fw4g3hlgx","Testing task 2","Kar do bas","in-progress","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2026-01-08T09:01:05.039Z","2026-01-08T09:01:37.072Z","4","0",NULL
+"hjanorr5d","task 1","data","done","S00625",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T12:21:00.151Z",NULL,"5","0.1","2025-12-12T12:38:51.823Z"
+"ieygnwcko","asdasd","asdasd","done","S00625",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T13:28:26.570Z",NULL,"1","0.1","2025-12-12T13:29:26.944Z"
+"ijqjmzpg5","asdasd","asdasd","done","S00493",NULL,NULL,NULL,"P2",NULL,NULL,"2025-12-11T14:22:55.706Z",NULL,"0.1","0.1","2025-12-12T11:53:50.145Z"
+"j8uob3liv","asdasdasd","","todo",NULL,NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T14:31:48.131Z",NULL,"1","0",NULL
+"k151e67ja","New Task","asdaasd","done","S00625",NULL,NULL,NULL,"P1",NULL,NULL,"2026-01-08T08:23:13.470Z",NULL,"1","0.1","2026-01-08T08:24:34.024Z"
+"li7fgs2e0","asdasd","asdasdasd","done","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T11:49:39.854Z",NULL,"0.1","0.1","2025-12-12T11:50:47.653Z"
+"lw4liqa69","asdasdas","asdasd","done","S00493",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T14:21:50.481Z",NULL,"0.1","0.1","2025-12-12T11:53:47.629Z"
+"o0wptpa9s","Rakesh Bug Issue","Rakesh kinldy test this","in-progress",NULL,NULL,NULL,NULL,"P0",NULL,NULL,"2025-12-11T14:01:16.127Z",NULL,"4","0",NULL
+"ogbzzm5co","ASDASDSA","ASDASDA","done","S00070",NULL,NULL,NULL,"P0",NULL,NULL,"2025-12-11T15:24:50.959Z",NULL,"7","0",NULL
+"oqxt105pf","Icici lombard","Do that","done","S00493",NULL,NULL,NULL,"P0",NULL,NULL,"2025-12-11T14:28:59.060Z",NULL,"7.38","7.38","2025-12-12T11:53:54.705Z"
+"parboejay","task test","asdasdasd","done","S00625",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T11:57:18.499Z",NULL,"0.1","0.1","2025-12-12T11:57:23.287Z"
+"pk0cmjbja","asdasdads","","todo",NULL,NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T14:30:18.361Z",NULL,"1","0",NULL
+"qlla042rt","New Task 2","details","done","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T11:46:28.211Z",NULL,"0.1","0.1","2025-12-12T11:47:21.009Z"
+"svksyt85b","Test RM APP","Test ","done","S00070",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T13:10:08.038Z",NULL,"3","8.87","2025-12-12T13:22:17.277Z"
+"t083w7wlo","New Task","new data","done","S00493",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T14:21:19.359Z",NULL,"0.1","0.1","2025-12-12T11:53:46.238Z"
+"tqkpzjtop","asdasd","asdas","done","S00493",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T14:23:19.822Z",NULL,"0.1","0.1","2025-12-12T11:53:52.859Z"
+"u69z070qq","Title","Description","done","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-12T06:23:57.391Z",NULL,"2","0",NULL
+"up2rd8e95","Log ","Take a log ","done","S00218",NULL,NULL,NULL,"P0",NULL,NULL,"2025-12-12T08:56:28.796Z",NULL,"2.97","2.97","2025-12-12T11:54:46.345Z"
+"xzm3vtjp7","Test Tasks","Do it on priority","done","S00218",NULL,NULL,NULL,"P1",NULL,NULL,"2026-01-08T08:56:06.027Z","2026-01-08T08:57:43.381Z","5","0.1","2026-01-08T08:58:34.494Z"
+"yi1mghx4h","NEW TASK1","HII TASK 1 SUCCEFFULLY ALOTED","todo",NULL,NULL,NULL,NULL,"P1",NULL,NULL,"2025-12-11T13:59:35.956Z",NULL,"3","0",NULL
