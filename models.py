@@ -1,7 +1,7 @@
 from typing import Optional
 import os
 from dotenv import load_dotenv
-from sqlalchemy import Column, Integer, String, Date
+from sqlalchemy import Column, Integer, String, Date, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import create_engine
 from pydantic import BaseModel
@@ -50,6 +50,8 @@ class Task(Base):
     task_created_at = Column(String(32), nullable=True)
     task_updated_at = Column(String(32), nullable=True)
     task_duration = Column(String(32), nullable=True)
+    time_spent = Column(Float, nullable=True, default=0.0)
+    completed_at = Column(String(32), nullable=True)
 
 # Database engine/session setup
 # Prefer DATABASE_URL env var. Example: postgresql+psycopg://user:pass@localhost:5432/automation
@@ -106,6 +108,8 @@ class TaskCreate(BaseModel):
     task_created_at: Optional[str] = None
     task_updated_at: Optional[str] = None
     task_duration: Optional[str] = None
+    time_spent: Optional[float] = 0.0
+    completed_at: Optional[str] = None
 
 class TaskRead(BaseModel):
     id: str
@@ -122,6 +126,8 @@ class TaskRead(BaseModel):
     task_created_at: Optional[str] = None
     task_updated_at: Optional[str] = None
     task_duration: Optional[str] = None
+    time_spent: Optional[float] = None
+    completed_at: Optional[str] = None
 
     class Config:
         from_attributes = True  # Pydantic v2 ORM mode

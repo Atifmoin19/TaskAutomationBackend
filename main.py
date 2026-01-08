@@ -486,6 +486,8 @@ def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verif
         task_created_at=task.task_created_at,
         task_updated_at=task.task_updated_at,
         task_duration=task.task_duration,
+        time_spent=task.time_spent,
+        completed_at=task.completed_at,
     )
     db.add(db_task)
     db.commit()
@@ -541,6 +543,8 @@ def get_tasks(user_id: Optional[str] = None, db=Depends(get_db), current_user=De
             "task_created_at": task.task_created_at,
             "task_updated_at": task.task_updated_at,
             "task_duration": task.task_duration,
+            "time_spent": task.time_spent,
+            "completed_at": task.completed_at,
         })
     return response(status.HTTP_200_OK, message="Tasks fetched successfully", data=data)
 
@@ -583,6 +587,8 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
     db_task.task_created_at = task.task_created_at
     db_task.task_updated_at = task.task_updated_at
     db_task.task_duration = task.task_duration
+    db_task.time_spent = task.time_spent
+    db_task.completed_at = task.completed_at
 
     db.commit()
     db.refresh(db_task)
