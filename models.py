@@ -111,6 +111,9 @@ class TaskCreate(BaseModel):
     time_spent: Optional[float] = 0.0
     completed_at: Optional[str] = None
 
+class TaskStatusUpdate(BaseModel):
+    task_status: str
+
 class TaskRead(BaseModel):
     id: str
     task_name: str

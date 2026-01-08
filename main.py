@@ -24,6 +24,7 @@ from models import (
      UserRead,
      UserUpdate,
      TaskCreate,
+     TaskStatusUpdate,
      TaskRead,
      Foundation,
  )
@@ -595,6 +596,28 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
     
     data = TaskRead.from_orm(db_task).dict()
     return response(status_code=status.HTTP_200_OK, message="Task updated successfully", data=data)
+
+
+@app.patch('/tasks/{task_id}/status', status_code=200)
+def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends(get_db), current_user=Depends(verify_token)):
+    db_task = db.query(TaskModel).filter(TaskModel.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db_task.task_status = status_update.task_status
+    
+    # If explicitly marking as Done, we could set completed_at, but keeping it simple as per request.
+    
+    try:
+        db.commit()
+        db.refresh(db_task)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database update failed: {str(e)}")
+
+    data = TaskRead.from_orm(db_task).dict()
+    return response(status.HTTP_200_OK, message="Task status updated successfully", data=data)
+
 
 
 @app.post('/users/upload', status_code=200)
