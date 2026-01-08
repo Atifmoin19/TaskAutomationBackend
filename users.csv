@@ -1,0 +1,5 @@
+emp_name,emp_id,emp_email,emp_phone,emp_designation,emp_department,emp_hierarchy
+Atif Moin,S00218,atif.moin@zopper.com,7007136187,SE1,FE,EMPLOYEE
+Rakesh Ranjan,S00070,rakesh.ranjan@zopper.com,9911963904,Tech Lead,QA,EMPLOYEE
+Saurabh Kumar,S00148,saurabh.kumar@zopper.com,9458466102,admin,SSE,L1
+Aashish Kucchal,S00493,aashish.kuchhal@zopper.com,9999999999,ASE,BE,EMPLOYEE
