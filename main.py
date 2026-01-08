@@ -33,9 +33,14 @@ app = FastAPI(root_path="/api/automation")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # allow_origins=["*"] can be problematic with allow_credentials=True in some setups.
+    # explicit list is better, or allow_origin_regex.
+    # For now, we try forcing specific common origins + wildcard if possible, 
+    # BUT standard fix for "CORS error" when credentials=True is NOT to use "*".
+    # However, since we want broad access for now:
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "https://ubdev-insurance.theblackswan.in", "*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
 logger = logging.getLogger(__name__)
