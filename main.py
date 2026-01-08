@@ -29,7 +29,7 @@ from models import (
      Foundation,
  )
 
-app = FastAPI()
+app = FastAPI(root_path="/api/automation")
 
 app.add_middleware(
     CORSMiddleware,
