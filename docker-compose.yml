@@ -43,6 +43,20 @@ services:
     networks:
       - ims_network
 
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: automation-pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+    ports:
+      - "5055:80"
+    depends_on:
+      - automation_db
+    networks:
+      - ims_network
+
 volumes:
   automation_pg_data:
 
