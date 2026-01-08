@@ -1,0 +1,53 @@
+version: "3"
+
+services:
+  automation_backend:
+    build: .
+    restart: always
+    image: automation_backend_image
+    container_name: automation-backend
+    ports:
+      - "8051:8000"  # Using 8051 to avoid conflict with existing 8050
+    volumes:
+      - .:/app/      # syncs current directory with container for updates/logs
+    environment:
+      # Database connection string using the service name 'automation_db'
+      - DATABASE_URL=postgresql://postgres:postgres_password@automation_db:5432/automation_db
+      - REDIS_HOST=automation_redis
+      - REDIS_PORT=6379
+    depends_on:
+      - automation_db
+      - automation_redis
+    networks:
+      - ims_network
+    # Using reload for development/easy updates as seen in your ref (manage.py runserver)
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  automation_db:
+    image: postgres:15
+    restart: always
+    container_name: automation-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: automation_db
+    volumes:
+      - automation_pg_data:/var/lib/postgresql/data
+    networks:
+      - ims_network
+
+  automation_redis:
+    image: redis:alpine
+    restart: always
+    container_name: automation-redis
+    ports:
+      - "6327:6379" # Using 6327 to avoid conflict with existing 6326
+    networks:
+      - ims_network
+
+volumes:
+  automation_pg_data:
+
+networks:
+  ims_network:
+    external: true
