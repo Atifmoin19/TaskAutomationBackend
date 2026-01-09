@@ -1,7 +1,7 @@
 from typing import Optional
 import os
 from dotenv import load_dotenv
-from sqlalchemy import Column, Integer, String, Date, Float
+from sqlalchemy import Column, Integer, String, Date, Float, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import create_engine
 from pydantic import BaseModel
@@ -52,6 +52,7 @@ class Task(Base):
     task_updated_at = Column(String(32), nullable=True)
     task_duration = Column(String(32), nullable=True)
     time_spent = Column(Float, nullable=True, default=0.0)
+    task_sessions = Column(JSON, nullable=True, default=list)
     completed_at = Column(String(32), nullable=True)
 
 # Database engine/session setup
@@ -110,6 +111,7 @@ class TaskCreate(BaseModel):
     task_updated_at: Optional[str] = None
     task_duration: Optional[str] = None
     time_spent: Optional[float] = 0.0
+    task_sessions: Optional[list] = []
     completed_at: Optional[str] = None
 
 class TaskStatusUpdate(BaseModel):
@@ -131,6 +133,7 @@ class TaskRead(BaseModel):
     task_updated_at: Optional[str] = None
     task_duration: Optional[str] = None
     time_spent: Optional[float] = None
+    task_sessions: Optional[list] = None
     completed_at: Optional[str] = None
 
     class Config:

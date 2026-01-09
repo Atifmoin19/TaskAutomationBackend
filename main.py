@@ -227,6 +227,58 @@ async def on_startup():
     # Start background task
     asyncio.create_task(check_overdue_tasks())
 
+def start_new_session(task, status_label="in-progress"):
+    sessions = task.task_sessions if task.task_sessions else []
+    # Check if already open session
+    for s in sessions:
+        if s.get("end_time") is None:
+             # Already open. We might want to update status if it changed?
+             # For now, simpler to leave it or update status?
+             # User prompt implies "Create a NEW entry" when picking up.
+             # If one is somehow open, we should probably close it first?
+             # But assume clean state if logic works.
+            return 
+            
+    sessions.append({
+        "start_time": datetime.utcnow().isoformat(),
+        "end_time": None,
+        "status": status_label
+    })
+    # Force SQLAlchemy to detect change
+    task.task_sessions = list(sessions)
+
+def close_current_session(task, completion_status=None):
+    sessions = task.task_sessions if task.task_sessions else []
+    changed = False
+    now_str = datetime.utcnow().isoformat()
+    for s in sessions:
+        if s.get("end_time") is None:
+            s["end_time"] = now_str
+            if completion_status:
+                s["status"] = completion_status
+            changed = True
+    
+    if changed:
+        task.task_sessions = list(sessions)
+        recalculate_total_time(task)
+
+def recalculate_total_time(task):
+    sessions = task.task_sessions if task.task_sessions else []
+    total_seconds = 0
+    for s in sessions:
+        start = s.get("start_time")
+        end = s.get("end_time")
+        if start and end:
+            try:
+                t1 = datetime.fromisoformat(start)
+                t2 = datetime.fromisoformat(end)
+                total_seconds += (t2 - t1).total_seconds()
+            except ValueError:
+                pass
+    
+    # Update time_spent in Hours
+    task.time_spent = total_seconds / 3600.0
+
 async def check_overdue_tasks():
     """
     Background task to check for tasks that have exceeded their duration 
@@ -280,6 +332,9 @@ async def check_overdue_tasks():
                         
                         if now > deadline:
                             logger.info(f"Task {task.id} ({task.task_name}) is overdue. Moving to backlog.")
+                            # Close session because we are auto-moving it away from active work
+                            # User req: Update status -> "backlog" in session
+                            close_current_session(task, completion_status="backlog")
                             task.task_status = "backlog"
                             
                     except ValueError as e:
@@ -683,6 +738,22 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
 
     db_task.task_name = task.task_name
     db_task.task_description = task.task_description
+    
+    # Session Logic
+    if task.task_status:
+        new_status = task.task_status
+        old_status = db_task.task_status
+        
+        # If changing TO in-progress
+        if new_status.lower() in ["in progress", "in-progress"] and (not old_status or old_status.lower() not in ["in progress", "in-progress"]):
+            start_new_session(db_task, status_label="in-progress")
+            # Crucial: Update task_assigned_date to NOW
+            db_task.task_assigned_date = datetime.utcnow().isoformat()
+            
+        # If changing FROM in-progress TO anything else
+        elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
+            close_current_session(db_task, completion_status=new_status)
+
     db_task.task_status = task.task_status
     db_task.task_assigned_to = task.task_assigned_to
     db_task.task_assigned_by = task.task_assigned_by
@@ -709,6 +780,21 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
     db_task = db.query(TaskModel).filter(TaskModel.id == task_id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    # Session Logic
+    if status_update.task_status:
+        new_status = status_update.task_status
+        old_status = db_task.task_status
+        
+        # If changing TO in-progress
+        if new_status.lower() in ["in progress", "in-progress"] and (not old_status or old_status.lower() not in ["in progress", "in-progress"]):
+            start_new_session(db_task, status_label="in-progress")
+            # Crucial: Update task_assigned_date to NOW
+            db_task.task_assigned_date = datetime.utcnow().isoformat()
+            
+        # If changing FROM in-progress TO anything else
+        elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
+            close_current_session(db_task, completion_status=new_status)
 
     db_task.task_status = status_update.task_status
     
