@@ -1,7 +1,7 @@
 import logging
 import secrets
 from typing import Generator, Optional
-from fastapi import FastAPI, Depends, HTTPException, Header, Body, UploadFile, File, Request
+from fastapi import FastAPI, Depends, HTTPException, Header, Body, UploadFile, File, Request, Query
 from fastapi.responses import JSONResponse
 import csv
 import io
@@ -301,11 +301,23 @@ async def check_overdue_tasks():
                 for task in tasks:
                     try:
                         # Parse Duration
-                        # Assuming duration is in Hours as per usage context
+                        # Support both "HH:MM" (e.g. "01:30") and legacy decimal strings (e.g. "1.5")
                         if not task.task_duration or task.task_duration == "0":
                             continue
                         
-                        duration_hours = float(task.task_duration)
+                        duration_hours = 0.0
+                        if ":" in str(task.task_duration):
+                            try:
+                                parts = task.task_duration.split(":")
+                                h = int(parts[0])
+                                m = int(parts[1])
+                                duration_hours = h + (m / 60.0)
+                            except ValueError:
+                                logger.warning(f"Invalid duration format for task {task.id}: {task.task_duration}")
+                                continue
+                        else:
+                            # Legacy float fallback
+                            duration_hours = float(task.task_duration)
                         
                         # Determine Reference Time (Last Updated or Created)
                         ref_time_str = task.task_updated_at if task.task_updated_at else task.task_created_at
@@ -660,12 +672,19 @@ def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verif
 
 
 @app.get('/tasks')
-def get_tasks(user_id: Optional[str] = None, db=Depends(get_db), current_user=Depends(verify_token)):
+def get_tasks(
+    user_id: Optional[str] = None, 
+    page: Optional[int] = None, 
+    page_size: Optional[int] = None,
+    db=Depends(get_db), 
+    current_user=Depends(verify_token)
+):
     """
     Get tasks.
     - If user_id is NOT provided: Returns tasks for Current User + Subordinates (if applicable).
     - If user_id IS provided: Returns tasks for Target User + Target User's Subordinates (if applicable).
       (Only if Current User has permission to view Target User).
+    - Supports Pagination: pass 'page' and 'page_size' query params.
     """
     
     # 1. Determine Access Scope of Current User
@@ -687,27 +706,27 @@ def get_tasks(user_id: Optional[str] = None, db=Depends(get_db), current_user=De
     
     query = db.query(TaskModel).filter(TaskModel.task_assigned_to.in_(display_scope))
 
-    tasks = query.all()
-    data = []
-    for task in tasks:
-        data.append({
-            "id": task.id,
-            "task_name": task.task_name,
-            "task_description": task.task_description,
-            "task_status": task.task_status,
-            "task_assigned_to": task.task_assigned_to,
-            "task_assigned_by": task.task_assigned_by,
-            "task_assigned_date": task.task_assigned_date,
-            "task_due_date": task.task_due_date,
-            "task_priority": task.task_priority,
-            "task_tags": task.task_tags,
-            "task_notes": task.task_notes,
-            "task_created_at": task.task_created_at,
-            "task_updated_at": task.task_updated_at,
-            "task_duration": task.task_duration,
-            "time_spent": task.time_spent,
-            "completed_at": task.completed_at,
-        })
+    # Pagination Logic
+    if page is not None and page_size is not None:
+        total_count = query.count()
+        offset = (page - 1) * page_size
+        tasks = query.offset(offset).limit(page_size).all()
+        
+        # Serialize
+        items = [TaskRead.from_orm(t).dict() for t in tasks]
+        
+        data = {
+            "items": items,
+            "total": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size if page_size > 0 else 0
+        }
+    else:
+        # Full Data
+        tasks = query.all()
+        data = [TaskRead.from_orm(t).dict() for t in tasks]
+
     return response(status.HTTP_200_OK, message="Tasks fetched successfully", data=data)
 
 
