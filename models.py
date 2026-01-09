@@ -31,6 +31,7 @@ class Foundation(Base):
     emp_id = Column(String(64), unique=True, nullable=False, index=True) # One-to-one with User.emp_id
     password = Column(String(255), nullable=False)
     token = Column(String(255), nullable=True)
+    last_active_at = Column(String(32), nullable=True)
 
 class Task(Base):
     __tablename__ = "tasks"

@@ -180,6 +180,25 @@ def verify_token(authorization: Optional[str] = Header(None), db=Depends(get_db)
     if not foundation_entry:
          raise HTTPException(status_code=401, detail="Invalid or Expired Token")
 
+    # Check expiration (15 minutes of inactivity)
+    now = datetime.utcnow()
+    if foundation_entry.last_active_at:
+        try:
+            last_active = datetime.fromisoformat(foundation_entry.last_active_at)
+            if now - last_active > timedelta(minutes=15):
+                # Token expired
+                foundation_entry.token = None
+                foundation_entry.last_active_at = None
+                db.commit()
+                raise HTTPException(status_code=401, detail="Token expired due to inactivity")
+        except ValueError:
+            # Fallback if date parsing error
+            pass
+
+    # Update last_active_at
+    foundation_entry.last_active_at = now.isoformat()
+    db.commit()
+
     user = db.query(UserModel).filter(UserModel.emp_id == foundation_entry.emp_id).first()
     
     if not user:
@@ -190,8 +209,11 @@ def verify_token(authorization: Optional[str] = Header(None), db=Depends(get_db)
 
 from redis_client import get_redis_client
 
+import asyncio
+from datetime import datetime, timedelta
+
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     # Initialize Postgres tables
     init_db()
     
@@ -201,6 +223,82 @@ def on_startup():
         logger.info("Redis connected successfully")
     else:
         logger.warning("Redis connection failed")
+
+    # Start background task
+    asyncio.create_task(check_overdue_tasks())
+
+async def check_overdue_tasks():
+    """
+    Background task to check for tasks that have exceeded their duration 
+    without an update and move them to backlog.
+    """
+    while True:
+        try:
+            # Create a new session for this background iteration
+            db = SessionLocal()
+            try:
+                # Fetch tasks that are active (not done/completed/backlog)
+                # We fetch all and filter in python to handle parsed duration/dates easier
+                # Optimization: In a real large DB, we would filter by status in SQL at least.
+                tasks = db.query(TaskModel).filter(
+                    TaskModel.task_status.notin_(["done", "completed", "backlog", "Done", "Completed", "Backlog"])
+                ).all()
+
+                now = datetime.utcnow()
+
+                for task in tasks:
+                    try:
+                        # Parse Duration
+                        # Assuming duration is in Hours as per usage context
+                        if not task.task_duration or task.task_duration == "0":
+                            continue
+                        
+                        duration_hours = float(task.task_duration)
+                        
+                        # Determine Reference Time (Last Updated or Created)
+                        ref_time_str = task.task_updated_at if task.task_updated_at else task.task_created_at
+                        
+                        if not ref_time_str:
+                            continue
+
+                        # Parse Date String (ISO Format: 2025-12-11T14:31:36.718Z)
+                        # Remove Z for simple parsing if present
+                        ref_time_str = ref_time_str.replace('Z', '')
+                        # Truncate fractional seconds to 6 digits if necessary or use flexible parsing
+                        # simple fromisoformat handles 6 digits usually. 
+                        # If existing data has varied precision, might need care.
+                        # We try/except parsing.
+                        try:
+                            ref_time = datetime.fromisoformat(ref_time_str)
+                        except ValueError:
+                            # Try falling back if format is different (e.g. without T or different sep)
+                            logger.warning(f"Could not parse date for task {task.id}: {ref_time_str}")
+                            continue
+                        
+                        # Logic: If (RefTime + Duration) < Now -> Move to Backlog
+                        deadline = ref_time + timedelta(hours=duration_hours)
+                        
+                        if now > deadline:
+                            logger.info(f"Task {task.id} ({task.task_name}) is overdue. Moving to backlog.")
+                            task.task_status = "backlog"
+                            
+                    except ValueError as e:
+                        # Conversion error for float or date
+                        logger.warning(f"Skipping task {task.id} due to value error: {e}")
+                        continue
+                
+                db.commit()
+                
+            except Exception as e:
+                logger.error(f"Error processing matching tasks: {e}")
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Critical error in check_overdue_tasks loop: {e}")
+
+        # Wait for some time before next check (e.g., 60 seconds)
+        await asyncio.sleep(60)
 
 
 def get_redis():
@@ -233,6 +331,7 @@ def login(login_req: LoginRequest, db=Depends(get_db)):
     
     token = secrets.token_hex(16)
     foundation.token = token
+    foundation.last_active_at = datetime.utcnow().isoformat()
     db.commit()
     
     user_data = UserRead.from_orm(user).dict()
@@ -274,12 +373,14 @@ def register(reg_req: RegisterRequest, db=Depends(get_db)):
         # If entry exists (default pwd), update password and token
         foundation.password = reg_req.password
         foundation.token = token
+        foundation.last_active_at = datetime.utcnow().isoformat()
     else:
         # If for some reason it doesn't exist (legacy?), create it
         foundation = Foundation(
             emp_id=reg_req.emp_id,
             password=reg_req.password,
-            token=token
+            token=token,
+            last_active_at=datetime.utcnow().isoformat()
         )
         db.add(foundation)
     
