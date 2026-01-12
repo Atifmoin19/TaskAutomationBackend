@@ -227,6 +227,89 @@ async def on_startup():
     # Start background task
     asyncio.create_task(check_overdue_tasks())
 
+def parse_duration(duration_str: str) -> float:
+    """Parses duration string (HH:MM or float hours) into hours (float)."""
+    if not duration_str or duration_str == "0":
+        return 0.0
+    
+    if ":" in str(duration_str):
+        try:
+            parts = duration_str.split(":")
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            return h + (m / 60.0)
+        except ValueError:
+            return 0.0
+    else:
+        try:
+            return float(duration_str)
+        except ValueError:
+            return 0.0
+
+def realign_user_tasks(db, emp_id: str):
+    """
+    Recalculates the timeline for standard tasks (Todo/In-Progress) for a specific user to be sequential.
+    Logic:
+    1. Fetch all non-completed tasks sorted by 'task_assigned_date'.
+    2. Iterate through them. StartTime of Task[i] = Max(OriginalAssignment, EndTime of Task[i-1]).
+    3. Update task_assigned_date if it overlaps.
+    """
+    tasks = db.query(TaskModel).filter(
+        TaskModel.task_assigned_to == emp_id,
+        TaskModel.task_status.notin_(["done", "completed", "backlog", "Done", "Completed", "Backlog", "on-hold", "on hold", "On-Hold", "On Hold"])
+    ).order_by(TaskModel.task_assigned_date.asc(), TaskModel.task_created_at.asc()).all()
+
+    if not tasks:
+        return
+
+    # Initialize "Timeline Cursor"
+    # We start checking from the first task in the queue.
+    # Note: If the first task is "In Progress", we shouldn't move its start time presumably, 
+    # but the request asks to recalculate timeline.
+    # We will assume earliest assigned date is the anchor.
+    
+    current_timeline_cursor = None
+
+    for i, task in enumerate(tasks):
+        # 1. Determine Start Time of this task
+        if not task.task_assigned_date:
+            continue
+            
+        try:
+            original_start = datetime.fromisoformat(task.task_assigned_date.replace('Z', ''))
+        except ValueError:
+            continue
+
+        if current_timeline_cursor is None:
+            # First task anchor
+            current_timeline_cursor = original_start
+        
+        # If the task starts BEFORE the cursor (meaning it overlaps with previous), push it forward.
+        # But if it is naturally scheduled LATER (gap), jump the cursor to it.
+        if original_start < current_timeline_cursor:
+            # Overlap detected! Shift this task to start at cursor.
+            task.task_assigned_date = current_timeline_cursor.isoformat()
+            effective_start = current_timeline_cursor
+        else:
+            # No overlap, it starts later. Move cursor to this gap.
+            effective_start = original_start
+            current_timeline_cursor = original_start
+
+        # 2. Add Duration to find End Time (Move Cursor Forward)
+        total_duration = parse_duration(task.task_duration)
+        spent_duration = task.time_spent if task.time_spent else 0.0
+        remaining_duration = max(0.0, total_duration - spent_duration)
+        
+        if remaining_duration > 0:
+            current_timeline_cursor = effective_start + timedelta(hours=remaining_duration)
+    
+    # Commit changes
+    try:
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error realigning tasks for user {emp_id}: {e}")
+        db.rollback()
+
 def start_new_session(task, status_label="in-progress"):
     sessions = task.task_sessions if task.task_sessions else []
     # Check if already open session
@@ -667,6 +750,9 @@ def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verif
     db.commit()
     db.refresh(db_task)
     
+    # Realign Timeline
+    realign_user_tasks(db, task.task_assigned_to)
+    
     data = TaskRead.from_orm(db_task).dict()
     return response(status_code=status.HTTP_201_CREATED, message="Task created successfully", data=data)
 
@@ -786,6 +872,9 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
     db_task.task_duration = task.task_duration
     db_task.time_spent = task.time_spent
     db_task.completed_at = task.completed_at
+    
+    # Realign Timeline
+    realign_user_tasks(db, db_task.task_assigned_to)
 
     db.commit()
     db.refresh(db_task)
@@ -816,6 +905,7 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
             close_current_session(db_task)
 
     db_task.task_status = status_update.task_status
+    db_task.task_updated_at = datetime.utcnow().isoformat()
     
     # If explicitly marking as Done, we could set completed_at, but keeping it simple as per request.
     
