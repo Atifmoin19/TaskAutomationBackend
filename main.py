@@ -293,7 +293,7 @@ async def check_overdue_tasks():
                 # We fetch all and filter in python to handle parsed duration/dates easier
                 # Optimization: In a real large DB, we would filter by status in SQL at least.
                 tasks = db.query(TaskModel).filter(
-                    TaskModel.task_status.notin_(["done", "completed", "backlog", "Done", "Completed", "Backlog"])
+                    TaskModel.task_status.notin_(["done", "completed", "backlog", "Done", "Completed", "Backlog", "on-hold", "on hold", "On-Hold", "On Hold"])
                 ).all()
 
                 now = datetime.utcnow()
@@ -771,7 +771,7 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
             
         # If changing FROM in-progress TO anything else
         elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
-            close_current_session(db_task, completion_status=new_status)
+            close_current_session(db_task)
 
     db_task.task_status = task.task_status
     db_task.task_assigned_to = task.task_assigned_to
@@ -813,7 +813,7 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
             
         # If changing FROM in-progress TO anything else
         elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
-            close_current_session(db_task, completion_status=new_status)
+            close_current_session(db_task)
 
     db_task.task_status = status_update.task_status
     
