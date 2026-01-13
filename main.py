@@ -746,6 +746,61 @@ def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verif
     # Validate Rank Logic
     validate_assignee_eligibility(assigned_user)
 
+    # Logic to Append New Task to End of Timeline
+    # If the user provides a task assigned date that is effectively "now" (default), we want to append it to the end of the existing queue.
+    # Otherwise, it might insert itself in the middle of active tasks.
+    
+    # 1. Fetch active tasks for this user
+    active_tasks = db.query(TaskModel).filter(
+        TaskModel.task_assigned_to == task.task_assigned_to,
+        TaskModel.task_status.notin_(["done", "completed", "backlog", "Done", "Completed", "Backlog", "on-hold", "on hold", "On-Hold", "On Hold"])
+    ).all()
+
+    # 2. Find the latest end time
+    max_end_time = datetime.utcnow()
+    has_active_tasks = False
+    
+    for t in active_tasks:
+        if t.task_assigned_date:
+            try:
+                # remove Z if present
+                t_start = datetime.fromisoformat(t.task_assigned_date.replace('Z', ''))
+                t_dur = parse_duration(t.task_duration)
+                t_end = t_start + timedelta(hours=t_dur)
+                
+                if t_end > max_end_time:
+                    max_end_time = t_end
+                    has_active_tasks = True
+            except ValueError:
+                continue
+    
+    # 3. Determine if we should override the incoming date
+    # Only override if the incoming date is roughly "Now" (or earlier).
+    # If the user explicitly scheduled it for next week, we shouldn't move it to today.
+    should_append = False
+    incoming_date = datetime.utcnow()
+    
+    if task.task_assigned_date:
+        try:
+            incoming_date = datetime.fromisoformat(task.task_assigned_date.replace('Z', ''))
+            # Calculate "Now" loosely. If incoming date is within last 1 minute or in the past?
+            # Or simpler: If incoming date is BEFORE max_end_time, append it.
+            # But what if user wants to squeeze it in?
+            # Standard requirement here seems to be "Don't overlap default creations".
+            # We'll use a threshold: if incoming date < max_end_time, we append.
+            if has_active_tasks and incoming_date < max_end_time:
+                should_append = True
+        except ValueError:
+            # If invalid date provided, definitely append
+            should_append = True
+    else:
+        should_append = True
+
+    final_assigned_date = task.task_assigned_date
+    if should_append and has_active_tasks:
+        # Set to max_end_time
+        final_assigned_date = max_end_time.isoformat()
+
     db_task = TaskModel(
         id=task.id,
         task_name=task.task_name,
@@ -753,7 +808,7 @@ def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verif
         task_status=task.task_status,
         task_assigned_to=task.task_assigned_to,
         task_assigned_by=task.task_assigned_by,
-        task_assigned_date=task.task_assigned_date,
+        task_assigned_date=final_assigned_date,
         task_due_date=task.task_due_date,
         task_priority=task.task_priority,
         task_tags=task.task_tags,
