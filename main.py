@@ -70,6 +70,12 @@ HIERARCHY_RANKS = {
     "OWNER": 7
 }
 
+
+
+def get_utc_now_iso() -> str:
+    """Returns current UTC time in strict ISO 8601 format with Z suffix."""
+    return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
 def get_rank(designation: str) -> int:
     # Default to 0 if unknown designation
     if not designation:
@@ -198,7 +204,7 @@ def verify_token(authorization: Optional[str] = Header(None), db=Depends(get_db)
             pass
 
     # Update last_active_at
-    foundation_entry.last_active_at = now.isoformat()
+    foundation_entry.last_active_at = get_utc_now_iso()
     db.commit()
 
     user = db.query(UserModel).filter(UserModel.emp_id == foundation_entry.emp_id).first()
@@ -331,19 +337,19 @@ def realign_user_tasks(db, emp_id: str):
         db.rollback()
 
 def start_new_session(db, task, status_label="in-progress"):
-    # 1. Enforce Single Active Session: Auto-Hold others - REMOVED PER USER REQUEST
-    # try:
-    #     others = db.query(TaskModel).filter(
-    #         TaskModel.task_assigned_to == task.task_assigned_to,
-    #         TaskModel.id != task.id,
-    #         TaskModel.task_status.in_(["in progress", "in-progress", "In Progress"])
-    #     ).all()
-    #     for other in others:
-    #         close_current_session(other, completion_status="on-hold")
-    #         other.task_status = "on-hold"
-    #         # Since we are using the same db session, these will be committed along with the main task
-    # except Exception as e:
-    #     logger.error(f"Auto-hold error: {e}")
+    # 1. Enforce Single Active Session: Auto-Hold others
+    try:
+        others = db.query(TaskModel).filter(
+            TaskModel.task_assigned_to == task.task_assigned_to,
+            TaskModel.id != task.id,
+            TaskModel.task_status.in_(["in progress", "in-progress", "In Progress"])
+        ).all()
+        for other in others:
+            # Atomic Session Switching
+            close_current_session(other, completion_status="on-hold")
+            other.task_status = "on-hold"
+    except Exception as e:
+        logger.error(f"Auto-hold error: {e}")
 
     current_sessions = task.task_sessions if task.task_sessions else []
     
@@ -356,7 +362,7 @@ def start_new_session(db, task, status_label="in-progress"):
     # Create Deep Copy and Append
     sessions = copy.deepcopy(current_sessions)
     sessions.append({
-        "start_time": datetime.utcnow().isoformat(),
+        "start_time": get_utc_now_iso(),
         "end_time": None,
         "status": status_label
     })
@@ -373,7 +379,7 @@ def close_current_session(task, completion_status=None):
     sessions = copy.deepcopy(current_sessions)
     
     changed = False
-    now_str = datetime.utcnow().isoformat()
+    now_str = get_utc_now_iso()
     
     for s in sessions:
         if s.get("end_time") is None:
@@ -523,7 +529,7 @@ def login(login_req: LoginRequest, db=Depends(get_db)):
     
     token = secrets.token_hex(16)
     foundation.token = token
-    foundation.last_active_at = datetime.utcnow().isoformat()
+    foundation.last_active_at = get_utc_now_iso()
     db.commit()
     
     user_data = UserRead.from_orm(user).dict()
@@ -565,14 +571,14 @@ def register(reg_req: RegisterRequest, db=Depends(get_db)):
         # If entry exists (default pwd), update password and token
         foundation.password = reg_req.password
         foundation.token = token
-        foundation.last_active_at = datetime.utcnow().isoformat()
+        foundation.last_active_at = get_utc_now_iso()
     else:
         # If for some reason it doesn't exist (legacy?), create it
         foundation = Foundation(
             emp_id=reg_req.emp_id,
             password=reg_req.password,
             token=token,
-            last_active_at=datetime.utcnow().isoformat()
+            last_active_at=get_utc_now_iso()
         )
         db.add(foundation)
     
@@ -822,8 +828,8 @@ def create_task(task: TaskCreate, db=Depends(get_db), current_user=Depends(verif
 
     final_assigned_date = task.task_assigned_date
     if should_append and has_active_tasks:
-        # Set to max_end_time
-        final_assigned_date = max_end_time.isoformat()
+        # Set to max_end_time formatted with Z
+        final_assigned_date = max_end_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
     db_task = TaskModel(
         id=task.id,
@@ -1005,8 +1011,13 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
         elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
             close_current_session(db_task, completion_status=new_status)
 
-    db_task.task_status = status_update.task_status
-    db_task.task_updated_at = datetime.utcnow().isoformat()
+        if new_status.lower() in ["done", "completed"]:
+             # Ensure sessions are closed (handled above if was in progress, but safe to call)
+             close_current_session(db_task, completion_status="done")
+             db_task.completed_at = get_utc_now_iso()
+        elif new_status.lower() not in ["done", "completed"]:
+             # If moving out of done state, clear completed_at
+             db_task.completed_at = None
     
     # If explicitly marking as Done, we could set completed_at, but keeping it simple as per request.
     

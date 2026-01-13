@@ -55,6 +55,39 @@ class Task(Base):
     task_sessions = Column(JSON, nullable=True, default=list)
     completed_at = Column(String(32), nullable=True)
 
+    @property
+    def remaining_seconds(self):
+        try:
+            if not self.task_duration:
+                return 0.0
+            
+            # Simple parse duration logic duplicated here or imported? 
+            # Better to be self-contained or use a naive check if simple
+            d_str = str(self.task_duration)
+            total_hours = 0.0
+            if ":" in d_str:
+                parts = d_str.split(":")
+                h = int(parts[0])
+                m = int(parts[1]) if len(parts) > 1 else 0
+                total_hours = h + (m / 60.0)
+            else:
+                total_hours = float(d_str)
+            
+            total_seconds = total_hours * 3600.0
+            spent_seconds = (self.time_spent or 0.0) * 3600.0
+            rem = max(0.0, total_seconds - spent_seconds)
+            
+            # Floor logic if in progress (from user req)
+            if self.task_status and self.task_status.lower() in ["in progress", "in-progress"] and rem <= 0:
+                return 1800.0 # 30 mins floor
+            
+            if self.task_status and self.task_status.lower() in ["done", "completed"]:
+                return 0.0
+
+            return rem
+        except:
+            return 0.0
+            
 # Database engine/session setup
 # Prefer DATABASE_URL env var. Example: postgresql+psycopg://user:pass@localhost:5432/automation
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -133,6 +166,7 @@ class TaskRead(BaseModel):
     task_updated_at: Optional[str] = None
     task_duration: Optional[str] = None
     time_spent: Optional[float] = None
+    remaining_seconds: Optional[float] = None # New Field
     task_sessions: Optional[list] = None
     completed_at: Optional[str] = None
 
