@@ -330,16 +330,26 @@ def realign_user_tasks(db, emp_id: str):
         logger.error(f"Error realigning tasks for user {emp_id}: {e}")
         db.rollback()
 
-def start_new_session(task, status_label="in-progress"):
+def start_new_session(db, task, status_label="in-progress"):
+    # 1. Enforce Single Active Session: Auto-Hold others
+    try:
+        others = db.query(TaskModel).filter(
+            TaskModel.task_assigned_to == task.task_assigned_to,
+            TaskModel.id != task.id,
+            TaskModel.task_status.in_(["in progress", "in-progress", "In Progress"])
+        ).all()
+        for other in others:
+            close_current_session(other, completion_status="on-hold")
+            other.task_status = "on-hold"
+            # Since we are using the same db session, these will be committed along with the main task
+    except Exception as e:
+        logger.error(f"Auto-hold error: {e}")
+
     sessions = task.task_sessions if task.task_sessions else []
     # Check if already open session
     for s in sessions:
         if s.get("end_time") is None:
-             # Already open. We might want to update status if it changed?
-             # For now, simpler to leave it or update status?
-             # User prompt implies "Create a NEW entry" when picking up.
-             # If one is somehow open, we should probably close it first?
-             # But assume clean state if logic works.
+             # Already open.
             return 
             
     sessions.append({
@@ -933,7 +943,7 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
         
         # If changing TO in-progress
         if new_status.lower() in ["in progress", "in-progress"] and (not old_status or old_status.lower() not in ["in progress", "in-progress"]):
-            start_new_session(db_task, status_label="in-progress")
+            start_new_session(db, db_task, status_label="in-progress")
             # Crucial: Update task_assigned_date to NOW
             db_task.task_assigned_date = datetime.utcnow().isoformat()
             
@@ -982,7 +992,7 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
         
         # If changing TO in-progress
         if new_status.lower() in ["in progress", "in-progress"] and (not old_status or old_status.lower() not in ["in progress", "in-progress"]):
-            start_new_session(db_task, status_label="in-progress")
+            start_new_session(db, db_task, status_label="in-progress")
             # Crucial: Update task_assigned_date to NOW
             db_task.task_assigned_date = datetime.utcnow().isoformat()
             
