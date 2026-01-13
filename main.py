@@ -257,7 +257,7 @@ def realign_user_tasks(db, emp_id: str):
     tasks = db.query(TaskModel).filter(
         TaskModel.task_assigned_to == emp_id,
         TaskModel.task_status.notin_(["done", "completed", "backlog", "Done", "Completed", "Backlog", "on-hold", "on hold", "On-Hold", "On Hold"])
-    ).order_by(TaskModel.task_assigned_date.asc(), TaskModel.task_created_at.asc()).all()
+    ).order_by(TaskModel.task_created_at.asc()).all()
 
     if not tasks:
         return
