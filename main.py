@@ -345,20 +345,25 @@ def start_new_session(db, task, status_label="in-progress"):
     except Exception as e:
         logger.error(f"Auto-hold error: {e}")
 
-    sessions = task.task_sessions if task.task_sessions else []
+    current_sessions = task.task_sessions if task.task_sessions else []
+    
     # Check if already open session
-    for s in sessions:
+    for s in current_sessions:
         if s.get("end_time") is None:
              # Already open.
             return 
             
+    # Create Deep Copy and Append
+    sessions = copy.deepcopy(current_sessions)
     sessions.append({
         "start_time": datetime.utcnow().isoformat(),
         "end_time": None,
         "status": status_label
     })
+    
     # Force SQLAlchemy to detect change
-    task.task_sessions = list(sessions)
+    task.task_sessions = sessions
+    flag_modified(task, "task_sessions")
 
 def close_current_session(task, completion_status=None):
     # Retrieve current sessions, default to empty list if None
