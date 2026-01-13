@@ -870,8 +870,12 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
     db_task.task_created_at = task.task_created_at
     db_task.task_updated_at = task.task_updated_at
     db_task.task_duration = task.task_duration
-    db_task.time_spent = task.time_spent
+    # db_task.time_spent = task.time_spent # Backend manages this
     db_task.completed_at = task.completed_at
+    
+    # IMPORTANT: Do NOT blindly overwrite task_sessions from frontend if backend logic is active
+    # The frontend is sending the OLD session list which overrides the new session we just created above!
+    # db_task.task_sessions = task.task_sessions
     
     # Realign Timeline
     realign_user_tasks(db, db_task.task_assigned_to)
