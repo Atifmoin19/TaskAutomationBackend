@@ -331,19 +331,19 @@ def realign_user_tasks(db, emp_id: str):
         db.rollback()
 
 def start_new_session(db, task, status_label="in-progress"):
-    # 1. Enforce Single Active Session: Auto-Hold others
-    try:
-        others = db.query(TaskModel).filter(
-            TaskModel.task_assigned_to == task.task_assigned_to,
-            TaskModel.id != task.id,
-            TaskModel.task_status.in_(["in progress", "in-progress", "In Progress"])
-        ).all()
-        for other in others:
-            close_current_session(other, completion_status="on-hold")
-            other.task_status = "on-hold"
-            # Since we are using the same db session, these will be committed along with the main task
-    except Exception as e:
-        logger.error(f"Auto-hold error: {e}")
+    # 1. Enforce Single Active Session: Auto-Hold others - REMOVED PER USER REQUEST
+    # try:
+    #     others = db.query(TaskModel).filter(
+    #         TaskModel.task_assigned_to == task.task_assigned_to,
+    #         TaskModel.id != task.id,
+    #         TaskModel.task_status.in_(["in progress", "in-progress", "In Progress"])
+    #     ).all()
+    #     for other in others:
+    #         close_current_session(other, completion_status="on-hold")
+    #         other.task_status = "on-hold"
+    #         # Since we are using the same db session, these will be committed along with the main task
+    # except Exception as e:
+    #     logger.error(f"Auto-hold error: {e}")
 
     current_sessions = task.task_sessions if task.task_sessions else []
     
