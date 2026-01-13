@@ -272,28 +272,46 @@ def realign_user_tasks(db, emp_id: str):
 
     for i, task in enumerate(tasks):
         # 1. Determine Start Time of this task
-        if not task.task_assigned_date:
-            continue
-            
-        try:
-            original_start = datetime.fromisoformat(task.task_assigned_date.replace('Z', ''))
-        except ValueError:
-            continue
-
-        if current_timeline_cursor is None:
-            # First task anchor
-            current_timeline_cursor = original_start
+        original_start = None
+        if task.task_assigned_date:
+            try:
+                original_start = datetime.fromisoformat(task.task_assigned_date.replace('Z', ''))
+            except ValueError:
+                original_start = None
         
-        # If the task starts BEFORE the cursor (meaning it overlaps with previous), push it forward.
-        # But if it is naturally scheduled LATER (gap), jump the cursor to it.
-        if original_start < current_timeline_cursor:
-            # Overlap detected! Shift this task to start at cursor.
-            task.task_assigned_date = current_timeline_cursor.isoformat()
-            effective_start = current_timeline_cursor
+        # If no valid date, we must assign one
+        if original_start is None:
+            if current_timeline_cursor:
+                # Append to current timeline end
+                effective_start = current_timeline_cursor
+            else:
+                # Start at creation time or now
+                if task.task_created_at:
+                    try:
+                        effective_start = datetime.fromisoformat(task.task_created_at.replace('Z', ''))
+                    except ValueError:
+                        effective_start = datetime.utcnow()
+                else:
+                    effective_start = datetime.utcnow()
+            
+            # Assign content
+            task.task_assigned_date = effective_start.isoformat()
+            # Sync cursor to this new start (it will be advanced by duration below)
+            current_timeline_cursor = effective_start
+
         else:
-            # No overlap, it starts later. Move cursor to this gap.
-            effective_start = original_start
-            current_timeline_cursor = original_start
+            # Start date exists
+            if current_timeline_cursor is None:
+                current_timeline_cursor = original_start
+            
+            if original_start < current_timeline_cursor:
+                # Overlap detected! Shift this task to start at cursor.
+                task.task_assigned_date = current_timeline_cursor.isoformat()
+                effective_start = current_timeline_cursor
+            else:
+                # No overlap, it starts later. Move cursor to this gap.
+                effective_start = original_start
+                current_timeline_cursor = original_start
 
         # 2. Add Duration to find End Time (Move Cursor Forward)
         total_duration = parse_duration(task.task_duration)
@@ -913,6 +931,9 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
     
     # If explicitly marking as Done, we could set completed_at, but keeping it simple as per request.
     
+    # Realign Timeline
+    realign_user_tasks(db, db_task.task_assigned_to)
+
     try:
         db.commit()
         db.refresh(db_task)
