@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from utils import response
 from dotenv import load_dotenv
+from sqlalchemy.orm.attributes import flag_modified
+import copy
 
 # Load env vars first so models.py can see DATABASE_URL
 load_dotenv()
@@ -315,11 +317,11 @@ def realign_user_tasks(db, emp_id: str):
 
         # 2. Add Duration to find End Time (Move Cursor Forward)
         total_duration = parse_duration(task.task_duration)
-        spent_duration = task.time_spent if task.time_spent else 0.0
-        remaining_duration = max(0.0, total_duration - spent_duration)
+        # Use Total Duration for scheduling to reserve full block, preventing visual overlaps
+        # regardless of time spent.
         
-        if remaining_duration > 0:
-            current_timeline_cursor = effective_start + timedelta(hours=remaining_duration)
+        if total_duration > 0:
+            current_timeline_cursor = effective_start + timedelta(hours=total_duration)
     
     # Commit changes
     try:
@@ -349,9 +351,15 @@ def start_new_session(task, status_label="in-progress"):
     task.task_sessions = list(sessions)
 
 def close_current_session(task, completion_status=None):
-    sessions = task.task_sessions if task.task_sessions else []
+    # Retrieve current sessions, default to empty list if None
+    current_sessions = task.task_sessions if task.task_sessions else []
+    # Create a deep copy to ensure we are modifying a new object structure
+    # This helps SQLAlchemy detect changes when we reassign it back
+    sessions = copy.deepcopy(current_sessions)
+    
     changed = False
     now_str = datetime.utcnow().isoformat()
+    
     for s in sessions:
         if s.get("end_time") is None:
             s["end_time"] = now_str
@@ -360,7 +368,8 @@ def close_current_session(task, completion_status=None):
             changed = True
     
     if changed:
-        task.task_sessions = list(sessions)
+        task.task_sessions = sessions
+        flag_modified(task, "task_sessions")
         recalculate_total_time(task)
 
 def recalculate_total_time(task):
@@ -930,7 +939,7 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
             
         # If changing FROM in-progress TO anything else
         elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
-            close_current_session(db_task)
+            close_current_session(db_task, completion_status=new_status)
 
     db_task.task_status = task.task_status
     db_task.task_assigned_to = task.task_assigned_to
@@ -979,7 +988,7 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
             
         # If changing FROM in-progress TO anything else
         elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
-            close_current_session(db_task)
+            close_current_session(db_task, completion_status=new_status)
 
     db_task.task_status = status_update.task_status
     db_task.task_updated_at = datetime.utcnow().isoformat()
