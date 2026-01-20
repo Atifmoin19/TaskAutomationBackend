@@ -938,30 +938,12 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
     # Validate Rank Logic
     validate_assignee_eligibility(assigned_user)
 
-    # Check if assignee is the same
-    # The user specifically asked to remove from prev developer to new developer logic
-    # "if asgnee to is same then reutn error" was previous req.
-    # Note: user did not say to remove that logic in this specific prompt, but said "verify all apis".
-    # I will keep the business logic from previous turn.
-
+    # Capture old status before assignments
+    old_status = db_task.task_status
+    
+    # Perform Assignments
     db_task.task_name = task.task_name
     db_task.task_description = task.task_description
-    
-    # Session Logic
-    if task.task_status:
-        new_status = task.task_status
-        old_status = db_task.task_status
-        
-        # If changing TO in-progress
-        if new_status.lower() in ["in progress", "in-progress"] and (not old_status or old_status.lower() not in ["in progress", "in-progress"]):
-            start_new_session(db, db_task, status_label="in-progress")
-            # Crucial: Update task_assigned_date to NOW
-            db_task.task_assigned_date = datetime.utcnow().isoformat()
-            
-        # If changing FROM in-progress TO anything else
-        elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
-            close_current_session(db_task, completion_status=new_status)
-
     db_task.task_status = task.task_status
     db_task.task_assigned_to = task.task_assigned_to
     db_task.task_assigned_by = task.task_assigned_by
@@ -975,6 +957,25 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
     db_task.task_duration = task.task_duration
     # db_task.time_spent = task.time_spent # Backend manages this
     db_task.completed_at = task.completed_at
+    
+    # Session & Status Logic (Applied AFTER assignments to override if needed)
+    if task.task_status:
+        new_status = task.task_status
+        
+        # If changing TO in-progress
+        if new_status.lower() in ["in progress", "in-progress"] and (not old_status or old_status.lower() not in ["in progress", "in-progress"]):
+            start_new_session(db, db_task, status_label="in-progress")
+            # Crucial: Update task_assigned_date to NOW
+            db_task.task_assigned_date = datetime.utcnow().isoformat()
+            
+        # If changing FROM in-progress TO anything else
+        elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
+            close_current_session(db_task, completion_status=new_status)
+            
+        # If returning from Backlog to Todo (Active)
+        # Ensure it comes to present timeline
+        if old_status and old_status.lower() == "backlog" and new_status.lower() == "todo":
+             db_task.task_assigned_date = get_utc_now_iso()
     
     # IMPORTANT: Do NOT blindly overwrite task_sessions from frontend if backend logic is active
     # The frontend is sending the OLD session list which overrides the new session we just created above!
@@ -1005,11 +1006,18 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
         if new_status.lower() in ["in progress", "in-progress"] and (not old_status or old_status.lower() not in ["in progress", "in-progress"]):
             start_new_session(db, db_task, status_label="in-progress")
             # Crucial: Update task_assigned_date to NOW
-            db_task.task_assigned_date = datetime.utcnow().isoformat()
+            db_task.task_assigned_date = get_utc_now_iso()
             
         # If changing FROM in-progress TO anything else
         elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
             close_current_session(db_task, completion_status=new_status)
+            
+        # If returning from Backlog to Todo (Active)
+        if old_status and old_status.lower() == "backlog" and new_status.lower() == "todo":
+             db_task.task_assigned_date = get_utc_now_iso()
+             
+        # Update updated_at
+        db_task.task_updated_at = get_utc_now_iso()
 
         if new_status.lower() in ["done", "completed"]:
              # Ensure sessions are closed (handled above if was in progress, but safe to call)
