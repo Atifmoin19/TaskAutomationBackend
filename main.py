@@ -346,7 +346,7 @@ def start_new_session(db, task, status_label="in-progress"):
         ).all()
         for other in others:
             # Atomic Session Switching
-            close_current_session(other, completion_status="on-hold")
+            close_current_session(other, completion_status="completed")
             other.task_status = "on-hold"
     except Exception as e:
         logger.error(f"Auto-hold error: {e}")
@@ -970,7 +970,7 @@ def update_task(task_id: str, task: TaskCreate, db=Depends(get_db), current_user
             
         # If changing FROM in-progress TO anything else
         elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
-            close_current_session(db_task, completion_status=new_status)
+            close_current_session(db_task, completion_status="completed")
             
         # If returning from Backlog to Todo (Active)
         # Ensure it comes to present timeline
@@ -1010,7 +1010,7 @@ def update_task_status(task_id: str, status_update: TaskStatusUpdate, db=Depends
             
         # If changing FROM in-progress TO anything else
         elif old_status and old_status.lower() in ["in progress", "in-progress"] and new_status.lower() not in ["in progress", "in-progress"]:
-            close_current_session(db_task, completion_status=new_status)
+            close_current_session(db_task, completion_status="completed")
             
         # If returning from Backlog to Todo (Active)
         if old_status and old_status.lower() == "backlog" and new_status.lower() == "todo":
