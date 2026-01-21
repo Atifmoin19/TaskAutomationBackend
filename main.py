@@ -749,7 +749,56 @@ def update_user(emp_id: str, user_update: UserUpdate, db=Depends(get_db)):
     if "token" in data:
         del data["token"]
 
+
     return response(status.HTTP_200_OK, message="User updated successfully", data=data)
+
+
+@app.delete('/user/{emp_id}', status_code=200)
+def delete_user(emp_id: str, db=Depends(get_db)):
+    # Check if user exists
+    db_user = db.query(UserModel).filter(UserModel.emp_id == emp_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check/Delete Foundation entry
+    foundation = db.query(Foundation).filter(Foundation.emp_id == emp_id).first()
+    if foundation:
+        db.delete(foundation)
+        
+    db.delete(db_user)
+    
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database deletion failed: {str(e)}")
+        
+
+    return response(status.HTTP_200_OK, message="User deleted successfully", data={"deleted_id": emp_id})
+
+class BulkDeleteUsersRequest(BaseModel):
+    emp_ids: list[str]
+
+@app.post('/users/bulk-delete', status_code=200)
+def bulk_delete_users(payload: BulkDeleteUsersRequest, db=Depends(get_db)):
+    if not payload.emp_ids:
+         raise HTTPException(status_code=400, detail="No emp_ids provided")
+    
+    # 1. Delete Foundation Entries
+    db.query(Foundation).filter(Foundation.emp_id.in_(payload.emp_ids)).delete(synchronize_session=False)
+
+    # 2. Delete Users
+    # We want to know how many were deleted, but bulk delete usually returns count
+    result = db.query(UserModel).filter(UserModel.emp_id.in_(payload.emp_ids)).delete(synchronize_session=False)
+    
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database bulk deletion failed: {str(e)}")
+        
+    return response(status.HTTP_200_OK, message="Bulk delete successful", data={"deleted_count": result})
+
 
 
 @app.post('/tasks', status_code=201)
